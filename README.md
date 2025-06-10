@@ -229,3 +229,4 @@ Proprietary - Insly Internal Use Only
 ---
 
 ⚠️ **Remember**: This system has access to production translations. Always review changes carefully before uploading. 
+# Transferred to InslyAI organization
