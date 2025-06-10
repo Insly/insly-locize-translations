@@ -1,0 +1,152 @@
+name: Download and Analyze Translations
+
+on:
+  schedule:
+    # Daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    inputs:
+      languages:
+        description: 'Languages to analyze (comma-separated)'
+        required: false
+        default: 'all'
+
+# Ensure only one instance runs at a time
+concurrency:
+  group: download-analyze
+  cancel-in-progress: false
+
+jobs:
+  download-analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Download translations from Locize (READ-ONLY)
+        env:
+          LOCIZE_PROJECT_ID: ${{ secrets.LOCIZE_PROJECT_ID }}
+          LOCIZE_READ_KEY: ${{ secrets.LOCIZE_READ_KEY }}
+        run: |
+          echo "📥 Downloading translations from Locize..."
+          node scripts/download-translations.js --output=translations/current
+          
+      - name: Analyze translation coverage
+        id: analyze
+        run: |
+          echo "📊 Analyzing translation coverage..."
+          node scripts/analyze-coverage.js --output=coverage-report.json
+          
+          # Extract summary for PR
+          TOTAL_KEYS=$(jq -r '.summary.totalKeys' coverage-report.json)
+          AVG_COVERAGE=$(jq -r '.summary.averageCoverage' coverage-report.json)
+          
+          echo "total_keys=$TOTAL_KEYS" >> $GITHUB_OUTPUT
+          echo "avg_coverage=$AVG_COVERAGE" >> $GITHUB_OUTPUT
+          
+      - name: Generate missing translations report
+        run: |
+          echo "📝 Identifying missing translations..."
+          node scripts/find-missing.js --output=missing-translations.json
+          
+      - name: Create coverage report
+        run: |
+          node scripts/generate-report.js \
+            --coverage=coverage-report.json \
+            --missing=missing-translations.json \
+            --output=docs/reports/daily-report-$(date +%Y-%m-%d).md
+            
+      - name: Check for changes
+        id: changes
+        run: |
+          if [[ -n $(git status -s translations/current/) ]]; then
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "📝 Translation changes detected"
+          else
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "✅ No translation changes"
+          fi
+          
+      - name: Create Pull Request
+        if: steps.changes.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'chore: update translation analysis'
+          title: '📊 Daily Translation Analysis - ${{ steps.analyze.outputs.avg_coverage }}% Coverage'
+          body: |
+            ## 📊 Translation Coverage Report
+            
+            **Date**: $(date +%Y-%m-%d)
+            **Total Keys**: ${{ steps.analyze.outputs.total_keys }}
+            **Average Coverage**: ${{ steps.analyze.outputs.avg_coverage }}%
+            
+            ### 📈 Coverage by Language
+            
+            | Language | Coverage | Missing Keys |
+            |----------|----------|--------------|
+            $(node scripts/format-coverage-table.js)
+            
+            ### 🔍 Key Findings
+            
+            - Languages below 50% coverage need attention
+            - New untranslated keys detected (if any)
+            - See attached reports for details
+            
+            ### 📁 Reports
+            
+            - [Full Coverage Report](docs/reports/daily-report-$(date +%Y-%m-%d).md)
+            - [Missing Translations](missing-translations.json)
+            
+            ---
+            
+            ⚠️ **This is a read-only analysis. No changes have been made to Locize.**
+            
+            To translate missing keys:
+            1. Review the missing translations report
+            2. Run the AI translation workflow
+            3. Review and approve suggestions
+            4. Manually upload approved translations
+            
+          branch: analysis/daily-report-$(date +%Y-%m-%d)
+          delete-branch: true
+          labels: |
+            translations
+            analysis
+            automated
+            
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: translation-analysis-$(date +%Y-%m-%d)
+          path: |
+            coverage-report.json
+            missing-translations.json
+            docs/reports/daily-report-*.md
+          retention-days: 30
+          
+      - name: Post summary
+        run: |
+          echo "## 📊 Translation Analysis Complete" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Keys**: ${{ steps.analyze.outputs.total_keys }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Average Coverage**: ${{ steps.analyze.outputs.avg_coverage }}%" >> $GITHUB_STEP_SUMMARY
+          echo "- **Changes Detected**: ${{ steps.changes.outputs.changes }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "This was a **read-only** operation. No changes were made to Locize." >> $GITHUB_STEP_SUMMARY

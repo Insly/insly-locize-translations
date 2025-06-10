@@ -1,0 +1,227 @@
+name: Upload Approved Translations
+
+on:
+  workflow_dispatch:
+    inputs:
+      language:
+        description: 'Language to upload (e.g., it, de, es)'
+        required: true
+        type: choice
+        options:
+          - it
+          - de
+          - es
+          - fr
+          - pl
+          - nl
+          - pt
+          - sv
+          - fi
+          - da
+          - nb
+          - et
+      dry_run:
+        description: 'Dry run (simulate upload without making changes)'
+        type: boolean
+        required: true
+        default: true
+      confirm_upload:
+        description: 'Type "CONFIRM" to proceed with upload'
+        required: true
+        default: ''
+      reason:
+        description: 'Reason for upload (for audit log)'
+        required: true
+
+# Prevent concurrent uploads
+concurrency:
+  group: upload-translations
+  cancel-in-progress: false
+
+jobs:
+  pre-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Verify confirmation
+        id: check
+        run: |
+          if [[ "${{ github.event.inputs.confirm_upload }}" != "CONFIRM" ]]; then
+            echo "❌ Upload cancelled - confirmation not provided"
+            echo "proceed=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "✅ Confirmation received"
+          echo "proceed=true" >> $GITHUB_OUTPUT
+          
+  upload-translations:
+    needs: pre-checks
+    if: needs.pre-checks.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Verify approved translations exist
+        id: verify
+        run: |
+          LANG="${{ github.event.inputs.language }}"
+          APPROVED_FILE="translations/approved/${LANG}.json"
+          
+          if [[ ! -f "$APPROVED_FILE" ]]; then
+            echo "❌ No approved translations found for language: $LANG"
+            exit 1
+          fi
+          
+          # Count translations
+          TRANSLATION_COUNT=$(jq 'length' "$APPROVED_FILE")
+          echo "translation_count=$TRANSLATION_COUNT" >> $GITHUB_OUTPUT
+          echo "✅ Found $TRANSLATION_COUNT approved translations for $LANG"
+          
+      - name: Backup current translations
+        env:
+          LOCIZE_PROJECT_ID: ${{ secrets.LOCIZE_PROJECT_ID }}
+          LOCIZE_READ_KEY: ${{ secrets.LOCIZE_READ_KEY }}
+        run: |
+          echo "📥 Backing up current translations..."
+          BACKUP_DIR="backups/$(date +%Y%m%d_%H%M%S)"
+          mkdir -p "$BACKUP_DIR"
+          
+          node scripts/download-translations.js \
+            --language=${{ github.event.inputs.language }} \
+            --output="$BACKUP_DIR"
+            
+          echo "✅ Backup saved to $BACKUP_DIR"
+          
+      - name: Validate translations
+        run: |
+          echo "🔍 Validating translations..."
+          
+          node scripts/validate-translations.js \
+            --file=translations/approved/${{ github.event.inputs.language }}.json \
+            --language=${{ github.event.inputs.language }}
+            
+          echo "✅ Validation passed"
+          
+      - name: Generate upload preview
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          echo "👁️ Dry run - Preview mode"
+          
+          node scripts/preview-upload.js \
+            --file=translations/approved/${{ github.event.inputs.language }}.json \
+            --language=${{ github.event.inputs.language }} \
+            --output=upload-preview.md
+            
+          cat upload-preview.md >> $GITHUB_STEP_SUMMARY
+          
+      - name: Upload to Locize
+        if: github.event.inputs.dry_run == 'false'
+        env:
+          LOCIZE_PROJECT_ID: ${{ secrets.LOCIZE_PROJECT_ID }}
+          LOCIZE_WRITE_KEY: ${{ secrets.LOCIZE_WRITE_KEY }}
+        run: |
+          echo "📤 Uploading translations to Locize..."
+          
+          node scripts/upload-to-locize.js \
+            --file=translations/approved/${{ github.event.inputs.language }}.json \
+            --language=${{ github.event.inputs.language }} \
+            --version=latest \
+            --namespace=translation
+            
+          echo "✅ Upload completed"
+          
+      - name: Verify upload
+        if: github.event.inputs.dry_run == 'false'
+        env:
+          LOCIZE_PROJECT_ID: ${{ secrets.LOCIZE_PROJECT_ID }}
+          LOCIZE_READ_KEY: ${{ secrets.LOCIZE_READ_KEY }}
+        run: |
+          echo "🔍 Verifying upload..."
+          sleep 5  # Wait for Locize to process
+          
+          node scripts/verify-upload.js \
+            --language=${{ github.event.inputs.language }} \
+            --expected=translations/approved/${{ github.event.inputs.language }}.json
+            
+      - name: Create audit log entry
+        if: github.event.inputs.dry_run == 'false'
+        run: |
+          AUDIT_FILE="docs/audit-log.md"
+          
+          echo "" >> $AUDIT_FILE
+          echo "## Upload: $(date -u +"%Y-%m-%d %H:%M:%S UTC")" >> $AUDIT_FILE
+          echo "- **Language**: ${{ github.event.inputs.language }}" >> $AUDIT_FILE
+          echo "- **Translations**: ${{ steps.verify.outputs.translation_count }}" >> $AUDIT_FILE
+          echo "- **User**: ${{ github.actor }}" >> $AUDIT_FILE
+          echo "- **Reason**: ${{ github.event.inputs.reason }}" >> $AUDIT_FILE
+          echo "- **Workflow Run**: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" >> $AUDIT_FILE
+          
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add docs/audit-log.md
+          git commit -m "chore: update audit log for ${{ github.event.inputs.language }} upload"
+          git push
+          
+      - name: Create notification issue
+        if: github.event.inputs.dry_run == 'false'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `✅ Translations Uploaded - ${{ github.event.inputs.language }}`,
+              body: `## Translation Upload Complete
+              
+              **Language**: ${{ github.event.inputs.language }}
+              **Translations**: ${{ steps.verify.outputs.translation_count }}
+              **Uploaded by**: @${{ github.actor }}
+              **Reason**: ${{ github.event.inputs.reason }}
+              **Time**: ${new Date().toISOString()}
+              
+              ### Verification
+              - ✅ Translations validated
+              - ✅ Upload successful
+              - ✅ Backup created
+              - ✅ Audit log updated
+              
+              ### Next Steps
+              1. Check [Locize Dashboard](https://www.locize.app/project/${{ secrets.LOCIZE_PROJECT_ID }})
+              2. Verify translations are live
+              3. Monitor for any issues
+              
+              ### Rollback
+              If needed, backups are available in the \`backups/\` directory.
+              `,
+              labels: ['translations', 'uploaded', 'production']
+            });
+            
+      - name: Post summary
+        run: |
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            echo "## 👁️ Dry Run Complete" >> $GITHUB_STEP_SUMMARY
+            echo "This was a preview only. No changes were made to Locize." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✅ Upload Complete" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- **Language**: ${{ github.event.inputs.language }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Translations**: ${{ steps.verify.outputs.translation_count }}" >> $GITHUB_STEP_SUMMARY
+            echo "- **Status**: Successfully uploaded to Locize" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Check the [Locize Dashboard](https://www.locize.app/project/${{ secrets.LOCIZE_PROJECT_ID }}) to verify." >> $GITHUB_STEP_SUMMARY
+          fi

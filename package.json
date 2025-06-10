@@ -1,0 +1,31 @@
+{
+  "name": "insly-locize-translations",
+  "version": "1.0.0",
+  "description": "Safe translation management system for Insly's Locize integration",
+  "private": true,
+  "scripts": {
+    "download": "node scripts/download-translations.js",
+    "coverage": "node scripts/analyze-coverage.js",
+    "find-missing": "node scripts/find-missing.js",
+    "ai:translate": "node scripts/ai-translate.js",
+    "upload:dry-run": "DRY_RUN=true node scripts/upload-to-locize.js",
+    "upload:approved": "node scripts/upload-to-locize.js",
+    "validate": "node scripts/validate-translations.js",
+    "report": "node scripts/generate-report.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "locize",
+    "translations",
+    "i18n",
+    "insurance",
+    "insly"
+  ],
+  "author": "@kivilaid",
+  "license": "PROPRIETARY",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

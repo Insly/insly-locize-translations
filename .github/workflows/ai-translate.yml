@@ -1,0 +1,205 @@
+name: Generate AI Translation Suggestions
+
+on:
+  schedule:
+    # Weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      languages:
+        description: 'Target languages (comma-separated, e.g., it,de,es)'
+        required: true
+        default: 'it'
+      confidence_threshold:
+        description: 'Minimum confidence threshold (0.0-1.0)'
+        required: false
+        default: '0.7'
+      dry_run:
+        description: 'Dry run mode (no PR creation)'
+        type: boolean
+        required: false
+        default: false
+
+jobs:
+  ai-translate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          
+      - name: Install dependencies
+        run: npm ci
+        
+      - name: Download current translations (READ-ONLY)
+        env:
+          LOCIZE_PROJECT_ID: ${{ secrets.LOCIZE_PROJECT_ID }}
+          LOCIZE_READ_KEY: ${{ secrets.LOCIZE_READ_KEY }}
+        run: |
+          echo "📥 Downloading current translations..."
+          node scripts/download-translations.js --output=translations/current
+          
+      - name: Find missing translations
+        id: missing
+        run: |
+          echo "🔍 Identifying missing translations..."
+          node scripts/find-missing.js \
+            --languages=${{ github.event.inputs.languages || 'it' }} \
+            --output=missing-by-language.json
+            
+          # Count missing translations
+          TOTAL_MISSING=$(jq '[.[] | length] | add' missing-by-language.json)
+          echo "total_missing=$TOTAL_MISSING" >> $GITHUB_OUTPUT
+          
+      - name: Generate AI translations
+        if: steps.missing.outputs.total_missing > 0
+        env:
+          CONFIDENCE_THRESHOLD: ${{ github.event.inputs.confidence_threshold || '0.7' }}
+          TARGET_LANGUAGES: ${{ github.event.inputs.languages || 'it' }}
+        run: |
+          echo "🤖 Generating AI translation suggestions..."
+          
+          # Process each language
+          for lang in ${TARGET_LANGUAGES//,/ }; do
+            echo "Processing language: $lang"
+            
+            node scripts/ai-translate.js \
+              --language=$lang \
+              --input=missing-by-language.json \
+              --output=translations/pending/ai-suggestions/${lang}_$(date +%Y%m%d).json \
+              --confidence=$CONFIDENCE_THRESHOLD \
+              --dictionary=scripts/dictionaries/insurance-${lang}.json
+          done
+          
+      - name: Generate translation report
+        id: report
+        run: |
+          echo "📊 Generating translation report..."
+          
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          REPORT_PATH="translations/pending/ai-suggestions/report_${TIMESTAMP}.md"
+          
+          node scripts/generate-ai-report.js \
+            --input=translations/pending/ai-suggestions/ \
+            --output=$REPORT_PATH
+            
+          echo "report_path=$REPORT_PATH" >> $GITHUB_OUTPUT
+          
+      - name: Create Pull Request
+        if: steps.missing.outputs.total_missing > 0 && github.event.inputs.dry_run != 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: 'feat: add AI translation suggestions'
+          title: '🤖 AI Translation Suggestions - ${{ github.event.inputs.languages || "it" }}'
+          body: |
+            ## 🤖 AI Translation Suggestions
+            
+            **Generated**: $(date)
+            **Languages**: ${{ github.event.inputs.languages || 'it' }}
+            **Confidence Threshold**: ${{ github.event.inputs.confidence_threshold || '0.7' }}
+            **Total Missing**: ${{ steps.missing.outputs.total_missing }}
+            
+            ### 📋 Summary
+            
+            This PR contains AI-generated translation suggestions for review. These translations have **NOT** been uploaded to Locize.
+            
+            ### 🔍 Review Process
+            
+            1. Review each translation suggestion
+            2. Check confidence scores
+            3. Edit translations as needed
+            4. Move approved translations to `translations/approved/`
+            5. Use manual upload workflow to push to Locize
+            
+            ### 📊 Translation Report
+            
+            See [Full Report](${{ steps.report.outputs.report_path }}) for details including:
+            - Confidence scores for each translation
+            - Translation method used
+            - Warnings for low-confidence translations
+            
+            ### ⚠️ Important Notes
+            
+            - **High Confidence (>0.9)**: Dictionary matches, likely accurate
+            - **Medium Confidence (0.7-0.9)**: Pattern-based, review recommended
+            - **Low Confidence (<0.7)**: Needs careful review
+            
+            ### 🛡️ Safety
+            
+            - These are **suggestions only**
+            - No automatic upload to Locize
+            - Human review required
+            - Use manual upload workflow after approval
+            
+            ---
+            
+            **Next Steps**:
+            1. Review translations in this PR
+            2. Edit as needed
+            3. Approve PR when ready
+            4. Run manual upload workflow
+            
+          branch: ai-translations/$(date +%Y%m%d)-${{ github.event.inputs.languages || 'it' }}
+          delete-branch: true
+          labels: |
+            translations
+            ai-generated
+            needs-review
+            
+      - name: Create review checklist issue
+        if: steps.missing.outputs.total_missing > 0 && github.event.inputs.dry_run != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const languages = '${{ github.event.inputs.languages || "it" }}'.split(',');
+            const checklist = languages.map(lang => `- [ ] Review ${lang} translations`).join('\n');
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Review AI Translations - ${new Date().toISOString().split('T')[0]}`,
+              body: `## 🤖 AI Translation Review Checklist
+              
+              **Total suggestions**: ${{ steps.missing.outputs.total_missing }}
+              **Languages**: ${languages.join(', ')}
+              
+              ### Review Tasks
+              ${checklist}
+              - [ ] Check high-confidence translations
+              - [ ] Review medium-confidence translations
+              - [ ] Carefully review low-confidence translations
+              - [ ] Move approved translations to \`approved/\` folder
+              - [ ] Run manual upload workflow
+              
+              ### Resources
+              - [AI Suggestions PR](../../pulls)
+              - [Translation Report](${{ steps.report.outputs.report_path }})
+              - [Locize Dashboard](https://www.locize.app/project/${{ secrets.LOCIZE_PROJECT_ID }})
+              
+              ### Safety Reminder
+              ⚠️ AI translations are NOT automatically uploaded. Manual action required.
+              `,
+              labels: ['translations', 'ai-generated', 'review-needed']
+            });
+            
+      - name: Post summary
+        run: |
+          echo "## 🤖 AI Translation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Languages**: ${{ github.event.inputs.languages || 'it' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Missing Translations**: ${{ steps.missing.outputs.total_missing }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Confidence Threshold**: ${{ github.event.inputs.confidence_threshold || '0.7' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Dry Run**: ${{ github.event.inputs.dry_run || 'false' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **No translations were uploaded to Locize. Manual review and upload required.**" >> $GITHUB_STEP_SUMMARY

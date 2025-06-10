@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Locize config with credentials
+.locizerc
+
+# Translation work files
+translations/current/*
+!translations/current/.gitkeep
+translations/pending/ai-suggestions/*
+!translations/pending/ai-suggestions/.gitkeep
+translations/approved/*
+!translations/approved/.gitkeep
+
+# Reports and logs
+coverage-report.json
+missing-translations.json
+missing-by-language.json
+upload-preview.md
+docs/audit/*
+!docs/audit/.gitkeep
+
+# Backups
+backups/*
+!backups/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+*~
+
+# Test files
+*.test.json
+test-output/
