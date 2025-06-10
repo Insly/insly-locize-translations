@@ -10,7 +10,7 @@ node_modules/
 .locizerc
 
 # Translation work files
-translations/current/*
+# translations/current/*
 !translations/current/.gitkeep
 translations/pending/ai-suggestions/*
 !translations/pending/ai-suggestions/.gitkeep

@@ -1,0 +1,81 @@
+{
+  "timestamp": "2025-06-10T23:05:30.130Z",
+  "projectId": "4a48f53b-4f59-4179-ade9-25766306c8ed",
+  "languages": [
+    {
+      "code": "en",
+      "name": "English",
+      "count": 25173
+    },
+    {
+      "code": "da",
+      "name": "Danish",
+      "count": 12422
+    },
+    {
+      "code": "de",
+      "name": "German",
+      "count": 12082
+    },
+    {
+      "code": "en-US",
+      "name": "English",
+      "count": 744
+    },
+    {
+      "code": "es",
+      "name": "Spanish; Castilian",
+      "count": 10608
+    },
+    {
+      "code": "et",
+      "name": "Estonian",
+      "count": 3630
+    },
+    {
+      "code": "fi",
+      "name": "Finnish",
+      "count": 11785
+    },
+    {
+      "code": "fr",
+      "name": "French",
+      "count": 9444
+    },
+    {
+      "code": "it",
+      "name": "Italian",
+      "count": 11991
+    },
+    {
+      "code": "nb",
+      "name": "Norwegian Bokmål",
+      "count": 787
+    },
+    {
+      "code": "nl",
+      "name": "Dutch",
+      "count": 11544
+    },
+    {
+      "code": "pl",
+      "name": "Polish",
+      "count": 11545
+    },
+    {
+      "code": "pt",
+      "name": "Portuguese",
+      "count": 10581
+    },
+    {
+      "code": "sv",
+      "name": "Swedish",
+      "count": 11763
+    },
+    {
+      "code": "en-CA",
+      "name": "English",
+      "count": 20609
+    }
+  ]
+}
