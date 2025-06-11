@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Insly Translation Dashboard</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header>
+        <h1>🌍 Insly Translation Dashboard</h1>
+        <div class="header-stats">
+            <div class="stat">
+                <span class="stat-value" id="totalKeys">-</span>
+                <span class="stat-label">Total Keys</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value" id="totalLanguages">-</span>
+                <span class="stat-label">Languages</span>
+            </div>
+            <div class="stat">
+                <span class="stat-value" id="avgCoverage">-</span>
+                <span class="stat-label">Avg Coverage</span>
+            </div>
+        </div>
+    </header>
+
+    <nav class="tabs">
+        <button class="tab active" data-tab="overview">Overview</button>
+        <button class="tab" data-tab="browser">Translation Browser</button>
+        <button class="tab" data-tab="analytics">Analytics</button>
+        <button class="tab" data-tab="export">Export</button>
+    </nav>
+
+    <main>
+        <!-- Overview Tab -->
+        <div id="overview" class="tab-content active">
+            <h2>Language Coverage</h2>
+            <div class="language-grid" id="languageGrid">
+                <!-- Language cards will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Translation Browser Tab -->
+        <div id="browser" class="tab-content">
+            <div class="browser-controls">
+                <div class="control-row">
+                    <select id="languageSelector" class="language-select">
+                        <option value="">Select a language...</option>
+                    </select>
+                    <input type="text" id="searchInput" placeholder="Search by key or content..." class="search-input">
+                </div>
+                <div class="filter-buttons">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="missing">Missing</button>
+                    <button class="filter-btn" data-filter="identical">Identical</button>
+                    <button class="filter-btn" data-filter="translated">Translated</button>
+                    <button class="filter-btn" data-filter="numeric">Numeric Keys</button>
+                </div>
+                <div class="action-buttons">
+                    <button class="action-btn action-btn-danger" onclick="showDeleteNumericKeys()">
+                        🗑️ Delete Numeric Keys
+                    </button>
+                    <button class="action-btn action-btn-ai" onclick="showAITranslate()">
+                        🤖 AI Translate Missing
+                    </button>
+                    <button class="action-btn action-btn-danger" onclick="showBulkDelete()">
+                        🧹 Smart Delete Useless
+                    </button>
+                </div>
+            </div>
+            
+            <div class="translation-viewer">
+                <div class="translation-list" id="translationList">
+                    <!-- Translation items will be inserted here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics" class="tab-content">
+            <h2>Translation Analytics</h2>
+            
+            <div class="summary-cards">
+                <div class="summary-card">
+                    <div class="summary-icon">📊</div>
+                    <div class="summary-value" id="totalTranslated">-</div>
+                    <div class="summary-label">Total Translated</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">⚠️</div>
+                    <div class="summary-value" id="totalMissing">-</div>
+                    <div class="summary-label">Total Missing</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">🔢</div>
+                    <div class="summary-value" id="totalNumeric">-</div>
+                    <div class="summary-label">Numeric Keys</div>
+                </div>
+                <div class="summary-card">
+                    <div class="summary-icon">📈</div>
+                    <div class="summary-value" id="bestLanguage">-</div>
+                    <div class="summary-label">Best Coverage</div>
+                </div>
+            </div>
+            
+            <div class="charts-grid">
+                <div class="chart-container">
+                    <h3>Coverage by Language</h3>
+                    <canvas id="coverageChart" width="500" height="300"></canvas>
+                </div>
+                <div class="chart-container">
+                    <h3>Translation Status Distribution</h3>
+                    <canvas id="statusChart" width="500" height="300"></canvas>
+                </div>
+            </div>
+            <div class="missing-summary" id="missingSummary">
+                <!-- Missing translation summary will be inserted here -->
+            </div>
+        </div>
+
+        <!-- Export Tab -->
+        <div id="export" class="tab-content">
+            <h2>Export Translations</h2>
+            <div class="export-options">
+                <div class="export-section">
+                    <h3>Export Modified Translations</h3>
+                    <p>Download translations that have been edited in this session.</p>
+                    <button id="exportModified" class="btn btn-primary">Export Modified</button>
+                </div>
+                <div class="export-section">
+                    <h3>Export Missing Translations</h3>
+                    <p>Download a list of all missing translations by language.</p>
+                    <button id="exportMissing" class="btn btn-secondary">Export Missing</button>
+                </div>
+                <div class="export-section">
+                    <h3>Export Full Report</h3>
+                    <p>Download a comprehensive coverage report.</p>
+                    <button id="exportReport" class="btn btn-secondary">Export Report</button>
+                </div>
+            </div>
+            <div id="exportLog" class="export-log"></div>
+        </div>
+    </main>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay active">
+        <div class="loading-spinner"></div>
+        <p>Loading translations...</p>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Translation</h3>
+                <button class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="edit-field">
+                    <label>Key:</label>
+                    <input type="text" id="editKey" readonly>
+                </div>
+                <div class="edit-field">
+                    <label>English (Reference):</label>
+                    <textarea id="editReference" readonly rows="3"></textarea>
+                </div>
+                <div class="edit-field">
+                    <label>Translation:</label>
+                    <textarea id="editTranslation" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeEditModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveTranslation()">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete Numeric Keys Modal -->
+    <div id="deleteNumericModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Delete Numeric Keys</h3>
+                <button class="modal-close" onclick="closeModal('deleteNumericModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Found <span id="numericKeyCount">0</span> numeric-only keys.</p>
+                <p>These keys will be marked for deletion:</p>
+                <div id="numericKeysList" style="max-height: 300px; overflow-y: auto; background: var(--background); padding: 1rem; border-radius: 0.5rem; margin: 1rem 0; font-family: monospace; font-size: 0.875rem;"></div>
+                <p style="color: var(--danger-color); font-weight: 500;">⚠️ This action cannot be undone!</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('deleteNumericModal')">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmDeleteNumeric()">Delete All Numeric Keys</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Translate Modal -->
+    <div id="aiTranslateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>AI Translation Assistant</h3>
+                <button class="modal-close" onclick="closeModal('aiTranslateModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>AI will translate <span id="missingCount">0</span> missing translations for <span id="aiLanguage">-</span>.</p>
+                <div class="edit-field">
+                    <label>Translation Context:</label>
+                    <select id="aiContext">
+                        <option value="insurance">Insurance Industry (Recommended)</option>
+                        <option value="general">General Business</option>
+                        <option value="technical">Technical/Software</option>
+                    </select>
+                </div>
+                <div class="edit-field">
+                    <label>Confidence Threshold:</label>
+                    <input type="range" id="aiConfidence" min="0" max="100" value="70">
+                    <span id="confidenceValue">70%</span>
+                </div>
+                <div id="aiProgress" style="display: none; margin-top: 1rem;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="aiProgressBar" style="width: 0%"></div>
+                    </div>
+                    <p id="aiStatus">Starting translation...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('aiTranslateModal')">Cancel</button>
+                <button class="btn btn-primary" onclick="startAITranslation()">Start AI Translation</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Delete Modal -->
+    <div id="bulkDeleteModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Smart Delete Useless Keys</h3>
+                <button class="modal-close" onclick="closeModal('bulkDeleteModal')">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Analyzing keys for smart deletion...</p>
+                <div class="edit-field">
+                    <label>
+                        <input type="checkbox" id="deleteNumeric" checked> Delete numeric-only keys
+                    </label>
+                </div>
+                <div class="edit-field">
+                    <label>
+                        <input type="checkbox" id="deleteEmpty" checked> Delete empty translations
+                    </label>
+                </div>
+                <div class="edit-field">
+                    <label>
+                        <input type="checkbox" id="deleteTest" checked> Delete test keys (containing 'test', 'demo', 'example')
+                    </label>
+                </div>
+                <div class="edit-field">
+                    <label>
+                        <input type="checkbox" id="deleteUUID"> Delete UUID-like keys
+                    </label>
+                </div>
+                <div id="deletePreview" style="margin-top: 1rem; padding: 1rem; background: var(--background); border-radius: 0.5rem;">
+                    <p>Keys to delete: <span id="deleteCount">0</span></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('bulkDeleteModal')">Cancel</button>
+                <button class="btn btn-danger" onclick="confirmBulkDelete()">Delete Selected Keys</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.js"></script>
+    <script src="js/search.js"></script>
+    <script src="js/editor.js"></script>
+    <script src="js/advanced.js"></script>
+</body>
+</html>
