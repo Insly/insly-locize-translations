@@ -55,25 +55,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Load all translations
 async function loadTranslations() {
     try {
-        // Load metadata - check multiple paths for GitHub Pages compatibility
-        let metaResponse;
-        try {
-            metaResponse = await fetch('../translations/current/_metadata.json');
-        } catch (e) {
-            // Try GitHub Pages path
-            metaResponse = await fetch('/insly-locize-translations/translations/current/_metadata.json');
-        }
+        // Load metadata - using relative path from dashboard
+        const metaResponse = await fetch('../translations/current/_metadata.json');
         metadata = await metaResponse.json();
         
         // Load all language files
         for (const lang of metadata.languages) {
-            let response;
-            try {
-                response = await fetch(`../translations/current/${lang.code}.json`);
-            } catch (e) {
-                // Try GitHub Pages path
-                response = await fetch(`/insly-locize-translations/translations/current/${lang.code}.json`);
-            }
+            const response = await fetch(`../translations/current/${lang.code}.json`);
             translations[lang.code] = await response.json();
         }
     } catch (error) {
