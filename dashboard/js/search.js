@@ -41,7 +41,11 @@ function applyFilter(filter) {
     
     // Apply status filter
     if (filter !== 'all') {
-        filteredItems = filteredItems.filter(item => item.status === filter);
+        if (filter === 'numeric') {
+            filteredItems = filteredItems.filter(item => item.isNumeric);
+        } else {
+            filteredItems = filteredItems.filter(item => item.status === filter);
+        }
     }
     
     // Apply search filter
@@ -151,6 +155,9 @@ function getTranslationStats() {
 // Render charts
 function renderCharts() {
     const stats = getTranslationStats();
+    
+    // Update summary cards
+    updateSummaryCards(stats);
     
     // Coverage chart
     const coverageCanvas = document.getElementById('coverageChart');

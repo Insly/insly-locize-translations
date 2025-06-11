@@ -200,11 +200,11 @@ function showNotification(message) {
         position: fixed;
         bottom: 20px;
         right: 20px;
-        background: var(--primary-color);
+        background: #6366f1;
         color: white;
         padding: 1rem 1.5rem;
         border-radius: 0.5rem;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         z-index: 1002;
         animation: slideIn 0.3s ease-out;
     `;
