@@ -1,0 +1,75 @@
+name: Deploy Dashboard to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'dashboard/**'
+      - '.github/workflows/deploy-dashboard.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+        
+      - name: Build Dashboard
+        run: |
+          # Copy dashboard files to a build directory
+          mkdir -p build
+          cp -r dashboard/* build/
+          
+          # Create index.html at root that redirects to dashboard
+          cat > build/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+              <meta charset="UTF-8">
+              <meta http-equiv="refresh" content="0; url=dashboard/">
+              <title>Redirecting to Dashboard...</title>
+          </head>
+          <body>
+              <p>Redirecting to <a href="dashboard/">Translation Dashboard</a>...</p>
+          </body>
+          </html>
+          EOF
+          
+          # Move dashboard files to dashboard subdirectory
+          mkdir -p build/dashboard
+          mv build/*.* build/dashboard/ 2>/dev/null || true
+          mv build/css build/dashboard/ 2>/dev/null || true
+          mv build/js build/dashboard/ 2>/dev/null || true
+          
+          # Copy translations for dashboard to access
+          mkdir -p build/translations
+          cp -r translations/current build/translations/ || echo "No translations to copy"
+          
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./build
+
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
